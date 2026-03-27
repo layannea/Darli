@@ -1,6 +1,6 @@
 # Darli
 
-Darli is a local-first web app for landlord and tenant onboarding.
+Darli is a web app for landlord / property manager and tenant payment.
 
 Users can:
 - sign up or log in
@@ -31,7 +31,7 @@ Make sure you have the following installed:
 ### 1. Clone the repository
 
 ```bash
-git clone <YOUR_REPO_URL>
+git clone git@github.com:layannea/Darli.git
 cd Darli
 ```
 
