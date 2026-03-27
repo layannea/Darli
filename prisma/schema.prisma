@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String?         @unique
+  phone          String?         @unique
+  password       String?
+  googleId       String?         @unique
+  name           String?
+  avatar         String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  profile        Profile?
+  buildings      Building[]
+  tenantUnits    TenantUnit[]
+  tenantRequests TenantRequest[]
+  payments       RentPayment[]
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  role      String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Building {
+  id         String   @id @default(cuid())
+  landlordId String
+  landlord   User     @relation(fields: [landlordId], references: [id])
+  name       String?
+  address    String
+  city       String
+  state      String
+  zip        String
+  country    String   @default("US")
+  verified   Boolean  @default(false)
+  units      Unit[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Unit {
+  id          String        @id @default(cuid())
+  buildingId  String
+  building    Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unitNumber  String
+  bedrooms    Int?
+  bathrooms   Float?
+  sqft        Int?
+  rentAmount  Float?
+  tenantUnits TenantUnit[]
+  payments    RentPayment[]
+  createdAt   DateTime      @default(now())
+}
+
+model TenantUnit {
+  id          String    @id @default(cuid())
+  unitId      String
+  unit        Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenantId    String?
+  tenant      User?     @relation(fields: [tenantId], references: [id])
+  inviteEmail String?
+  invitePhone String?
+  inviteName  String?
+  inviteToken String?   @unique
+  status      String    @default("invited")
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model TenantRequest {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        User     @relation(fields: [tenantId], references: [id])
+  address       String
+  city          String
+  state         String
+  zip           String
+  unitNumber    String
+  landlordEmail String?
+  landlordPhone String?
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RentPayment {
+  id        String   @id @default(cuid())
+  unitId    String
+  unit      Unit     @relation(fields: [unitId], references: [id])
+  tenantId  String
+  tenant    User     @relation(fields: [tenantId], references: [id])
+  amount    Float
+  month     String
+  status    String   @default("paid")
+  last4     String?
+  paidAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+}
