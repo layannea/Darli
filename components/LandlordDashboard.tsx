@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import LandlordMaintenance from './LandlordMaintenance'
 
 type TenantInfo = { id: string; name: string | null; email: string | null; phone: string | null }
 type TenantUnit = { id: string; inviteEmail: string | null; invitePhone: string | null; inviteName: string | null; status: string; acceptedAt: string | null; tenant: TenantInfo | null }
@@ -125,7 +126,7 @@ export default function LandlordDashboard({ userId, profileStatus }: { userId: s
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [currentMonth, setCurrentMonth] = useState('')
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'properties' | 'payments'>('properties')
+  const [activeTab, setActiveTab] = useState<'properties' | 'payments' | 'maintenance'>('properties')
 
   // Invite modal
   const [inviteModal, setInviteModal] = useState<{ unitId: string; unitNumber: string } | null>(null)
@@ -281,6 +282,12 @@ export default function LandlordDashboard({ userId, profileStatus }: { userId: s
         <button className={`dash-tab ${activeTab === 'payments' ? 'active' : ''}`} onClick={() => setActiveTab('payments')}>
           Payment History {payments.length > 0 && <span className="dash-tab-badge">{payments.length}</span>}
         </button>
+        <button className={`dash-tab ${activeTab === 'maintenance' ? 'active' : ''}`} onClick={() => setActiveTab('maintenance')}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+          Maintenance
+        </button>
       </div>
 
       {loading ? (
@@ -410,6 +417,8 @@ export default function LandlordDashboard({ userId, profileStatus }: { userId: s
             </div>
           )}
         </>
+      ) : activeTab === 'maintenance' ? (
+        <LandlordMaintenance />
       ) : (
         payments.length === 0 ? (
           <div className="empty-state">

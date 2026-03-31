@@ -29,7 +29,7 @@ function ScoreArc({ score }: { score: number }) {
     score >= 580 ? 'var(--warning)' : 'var(--error)'
 
   return (
-    <svg width="160" height="100" viewBox="0 0 160 100">
+    <svg width="160" height="114" viewBox="0 0 160 114">
       <path
         d="M20 90 A66 66 0 0 1 140 90"
         fill="none" stroke="var(--border)" strokeWidth="10" strokeLinecap="round"
@@ -41,13 +41,13 @@ function ScoreArc({ score }: { score: number }) {
         style={{ transition: 'stroke-dashoffset 1s ease' }}
       />
       <text
-        x="80" y="76" textAnchor="middle"
+        x="80" y="84" textAnchor="middle"
         style={{ fontSize: 28, fontWeight: 800, fill: 'var(--text)', fontFamily: 'var(--font)', letterSpacing: '-0.03em' }}
       >
         {score}
       </text>
       <text
-        x="80" y="92" textAnchor="middle"
+        x="80" y="106" textAnchor="middle"
         style={{ fontSize: 11, fontWeight: 600, fill: color, fontFamily: 'var(--font)' }}
       >
         {label}

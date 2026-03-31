@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import TenantMaintenance from './TenantMaintenance'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 const MortgageTracker = dynamic(() => import('./MortgageTracker'), { ssr: false })
@@ -40,7 +41,7 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
   const [showPayModal, setShowPayModal] = useState(false)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'rent' | 'payments' | 'mortgage'>('rent')
+  const [activeTab, setActiveTab] = useState<'rent' | 'payments' | 'mortgage' | 'maintenance'>('rent')
 
   const fetchAll = async () => {
     const [rentRes, inviteRes] = await Promise.all([
@@ -182,6 +183,13 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
           </svg>
           Mortgage Tracker
         </button>
+        <button className={`dash-tab ${activeTab === 'maintenance' ? 'active' : ''}`} onClick={() => setActiveTab('maintenance')}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+          </svg>
+          Maintenance
+          {/* show badge if open requests */}
+        </button>
       </div>
 
       {loading ? (
@@ -287,6 +295,8 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
         </div>
       ) : activeTab === 'mortgage' ? (
         <MortgageTracker />
+      ) : activeTab === 'maintenance' ? (
+        <TenantMaintenance unitId={rentInfo?.unitId ?? null} />
       ) : (
         payments.length === 0 ? (
           <div className="empty-state">

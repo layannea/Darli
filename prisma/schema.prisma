@@ -24,6 +24,7 @@ model User {
   tenantRequests   TenantRequest[]
   payments         RentPayment[]
   verificationCodes VerificationCode[]
+  maintenanceRequests MaintenanceRequest[] @relation("TenantMaintenance")
 }
 
 model Profile {
@@ -64,6 +65,7 @@ model Unit {
   tenantUnits TenantUnit[]
   payments    RentPayment[]
   createdAt   DateTime      @default(now())
+  maintenanceRequests MaintenanceRequest[]
 }
 
 model TenantUnit {
@@ -120,4 +122,20 @@ model VerificationCode {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+model MaintenanceRequest {
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       User      @relation("TenantMaintenance", fields: [tenantId], references: [id])
+  unitId       String
+  unit         Unit      @relation(fields: [unitId], references: [id])
+  title        String
+  description  String
+  category     String    @default("other")
+  priority     String    @default("medium")
+  status       String    @default("open")
+  landlordNote String?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
