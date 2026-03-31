@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { createToken } from '@/lib/auth'
 import { sendVerificationEmail } from '@/lib/email'
 import bcrypt from 'bcryptjs'
+import { sendVerificationSMS } from '@/lib/sms'
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,16 +56,16 @@ export async function POST(req: NextRequest) {
     if (method === 'phone') {
       if (!phone || phone.replace(/\D/g, '').length < 7)
         return NextResponse.json({ error: 'Valid phone number required' }, { status: 400 })
-
+    
       const exists = await prisma.user.findUnique({ where: { phone } })
       if (exists)
         return NextResponse.json({ error: 'Phone number already registered' }, { status: 409 })
-
+    
       const hashed = await bcrypt.hash(password, 12)
       const user = await prisma.user.create({
-        data: { phone, name: name || null, password: hashed, emailVerified: true }, // phone users skip email verify
+        data: { phone, name: name || null, password: hashed, emailVerified: true },
       })
-
+    
       const token = await createToken({ userId: user.id, phone: user.phone ?? undefined })
       const res = NextResponse.json({ success: true, requiresVerification: false })
       res.cookies.set('darli_token', token, {

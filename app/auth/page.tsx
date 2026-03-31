@@ -23,8 +23,13 @@ function AuthForm() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
 
-  // Email verification state
-  const [verifyState, setVerifyState] = useState<{ userId: string; email: string } | null>(null)
+  // Verification state
+  const [verifyState, setVerifyState] = useState<{
+    userId: string
+    email?: string
+    phone?: string
+    type: 'email' | 'phone'
+  } | null>(null)
   const [verifyCode, setVerifyCode] = useState('')
   const [verifyError, setVerifyError] = useState('')
   const [verifyLoading, setVerifyLoading] = useState(false)
@@ -59,6 +64,16 @@ function AuthForm() {
         return c - 1
       })
     }, 1000)
+  }
+
+  // After successful auth, auto-accept invite if token in URL then redirect
+  const finishAuth = async () => {
+    const inviteToken = searchParams.get('invite')
+    if (inviteToken) {
+      await fetch(`/api/invite/${inviteToken}/accept`, { method: 'POST' })
+    }
+    router.push('/dashboard')
+    router.refresh()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,15 +112,18 @@ function AuthForm() {
         return
       }
 
-      // Email signup → show verification screen
       if (data.requiresVerification) {
-        setVerifyState({ userId: data.userId, email: data.email })
+        setVerifyState({
+          userId: data.userId,
+          email: data.email,
+          phone: data.phone,
+          type: data.verificationType === 'phone' ? 'phone' : 'email',
+        })
         startResendCooldown()
         return
       }
 
-      router.push('/dashboard')
-      router.refresh()
+      await finishAuth()
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {
@@ -122,7 +140,11 @@ function AuthForm() {
     setVerifyLoading(true)
 
     try {
-      const verRes = await fetch('/api/auth/verify-email', {
+      const endpoint = verifyState?.type === 'phone'
+        ? '/api/auth/verify-phone'
+        : '/api/auth/verify-email'
+
+      const verRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: verifyState?.userId, code: verifyCode }),
@@ -133,15 +155,13 @@ function AuthForm() {
         return
       }
 
-      // Set session cookie now that email is verified
       await fetch('/api/auth/complete-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: verifyState?.userId }),
       })
 
-      router.push('/dashboard')
-      router.refresh()
+      await finishAuth()
     } catch {
       setVerifyError('Something went wrong. Please try again.')
     } finally {
@@ -153,7 +173,11 @@ function AuthForm() {
     setResendLoading(true)
     setVerifyError('')
     try {
-      const res = await fetch('/api/auth/send-code', {
+      const endpoint = verifyState?.type === 'phone'
+        ? '/api/auth/send-sms-code'
+        : '/api/auth/send-code'
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: verifyState?.userId }),
@@ -171,15 +195,18 @@ function AuthForm() {
     }
   }
 
-  // ── EMAIL VERIFICATION SCREEN ──
+  // ── VERIFICATION SCREEN ──
   if (verifyState) {
+    const isPhone = verifyState.type === 'phone'
+    const contactDisplay = isPhone ? verifyState.phone : verifyState.email
+
     return (
       <main style={{
         minHeight: '100vh', background: 'var(--bg)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}>
         <div style={{ width: '100%', maxWidth: 400 }}>
-          {/* Logo */}
+
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: 9, marginBottom: 36, fontSize: 17, fontWeight: 700,
@@ -189,7 +216,6 @@ function AuthForm() {
             Darli
           </div>
 
-          {/* Icon + heading */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 32 }}>
             <div style={{
               width: 56, height: 56, background: 'var(--accent-dim)',
@@ -197,21 +223,32 @@ function AuthForm() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--accent)', marginBottom: 20,
             }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
+              {isPhone ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                </svg>
+              )}
             </div>
+
             <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.025em', margin: '0 0 8px' }}>
-              Check your email
+              {isPhone ? 'Check your phone' : 'Check your email'}
             </h2>
             <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, lineHeight: 1.65 }}>
               We sent a 6-digit code to<br />
-              <strong style={{ color: 'var(--text)' }}>{verifyState.email}</strong>
+              <strong style={{ color: 'var(--text)' }}>{contactDisplay}</strong>
             </p>
+            {isPhone && (
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '8px 0 0' }}>
+                The SMS will include &quot;(SAMPLE TEST)&quot; in trial mode — the code still works.
+              </p>
+            )}
           </div>
 
-          {/* Code input + actions */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="field-group">
               <label className="field-label">Verification code</label>
@@ -248,10 +285,9 @@ function AuthForm() {
               onClick={handleVerify}
               disabled={verifyLoading || verifyCode.length !== 6}
             >
-              {verifyLoading ? <span className="spinner" /> : 'Verify Email'}
+              {verifyLoading ? <span className="spinner" /> : isPhone ? 'Verify Phone' : 'Verify Email'}
             </button>
 
-            {/* Resend */}
             <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
               Didn&apos;t receive it?{' '}
               <button
@@ -269,7 +305,6 @@ function AuthForm() {
               </button>
             </div>
 
-            {/* Back */}
             <button
               type="button"
               className="btn-ghost"
@@ -291,7 +326,6 @@ function AuthForm() {
   // ── MAIN AUTH SCREEN ──
   return (
     <main className="auth-wrapper">
-      {/* ── LEFT PANEL ── */}
       <div className="auth-left">
         <div className="brand-logo">
           <span className="brand-dot" />
@@ -306,7 +340,6 @@ function AuthForm() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
       <div className="auth-right">
         <div className="form-container">
           <div className="mobile-logo">
@@ -315,18 +348,10 @@ function AuthForm() {
           </div>
 
           <div className="tab-switcher">
-            <button
-              type="button"
-              className={`tab-btn ${mode === 'login' ? 'active' : ''}`}
-              onClick={() => switchMode('login')}
-            >
+            <button type="button" className={`tab-btn ${mode === 'login' ? 'active' : ''}`} onClick={() => switchMode('login')}>
               Sign in
             </button>
-            <button
-              type="button"
-              className={`tab-btn ${mode === 'signup' ? 'active' : ''}`}
-              onClick={() => switchMode('signup')}
-            >
+            <button type="button" className={`tab-btn ${mode === 'signup' ? 'active' : ''}`} onClick={() => switchMode('signup')}>
               Sign up
             </button>
           </div>
@@ -339,6 +364,23 @@ function AuthForm() {
               {mode === 'login' ? 'Sign in to your Darli account' : 'Get started — it only takes a minute'}
             </p>
           </div>
+
+          {/* Show invite context if coming from invite link */}
+          {searchParams.get('invite') && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px',
+              background: 'var(--accent-muted)', border: '1px solid rgba(124,111,250,0.2)',
+              borderRadius: 9, marginBottom: 4,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" style={{ flexShrink: 0 }}>
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>
+                Sign in or create an account to accept your invite
+              </span>
+            </div>
+          )}
 
           <a href="/api/auth/google" className="btn-google">
             <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
@@ -357,34 +399,22 @@ function AuthForm() {
               <div className="field-group">
                 <label className="field-label">Full name</label>
                 <input
-                  className="field-input"
-                  type="text"
-                  placeholder="Jane Smith"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  autoComplete="name"
+                  className="field-input" type="text" placeholder="Jane Smith"
+                  value={name} onChange={e => setName(e.target.value)} autoComplete="name"
                 />
               </div>
             )}
 
             {mode === 'signup' && (
               <div className="method-toggle">
-                <button
-                  type="button"
-                  className={`method-btn ${method === 'email' ? 'active' : ''}`}
-                  onClick={() => setMethod('email')}
-                >
+                <button type="button" className={`method-btn ${method === 'email' ? 'active' : ''}`} onClick={() => setMethod('email')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="2" y="4" width="20" height="16" rx="2" />
                     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                   </svg>
                   Email
                 </button>
-                <button
-                  type="button"
-                  className={`method-btn ${method === 'phone' ? 'active' : ''}`}
-                  onClick={() => setMethod('phone')}
-                >
+                <button type="button" className={`method-btn ${method === 'phone' ? 'active' : ''}`} onClick={() => setMethod('phone')}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.81a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
                   </svg>
@@ -397,13 +427,10 @@ function AuthForm() {
               <div className="field-group">
                 <label className="field-label">Email or phone</label>
                 <input
-                  className="field-input"
-                  type="text"
+                  className="field-input" type="text"
                   placeholder="you@example.com or +1 555 0100"
-                  value={identifier}
-                  onChange={e => setIdentifier(e.target.value)}
-                  autoComplete="username"
-                  required
+                  value={identifier} onChange={e => setIdentifier(e.target.value)}
+                  autoComplete="username" required
                 />
               </div>
             )}
@@ -412,13 +439,9 @@ function AuthForm() {
               <div className="field-group">
                 <label className="field-label">Email address</label>
                 <input
-                  className="field-input"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  autoComplete="email"
-                  required
+                  className="field-input" type="email" placeholder="you@example.com"
+                  value={email} onChange={e => setEmail(e.target.value)}
+                  autoComplete="email" required
                 />
               </div>
             )}
@@ -427,13 +450,9 @@ function AuthForm() {
               <div className="field-group">
                 <label className="field-label">Phone number</label>
                 <input
-                  className="field-input"
-                  type="tel"
-                  placeholder="+1 555 000 0000"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  autoComplete="tel"
-                  required
+                  className="field-input" type="tel" placeholder="+1 555 000 0000"
+                  value={phone} onChange={e => setPhone(e.target.value)}
+                  autoComplete="tel" required
                 />
               </div>
             )}
@@ -444,13 +463,10 @@ function AuthForm() {
                 {mode === 'login' && <a href="#" className="forgot-link">Forgot password?</a>}
               </div>
               <input
-                className="field-input"
-                type="password"
+                className="field-input" type="password"
                 placeholder={mode === 'signup' ? 'Minimum 8 characters' : '••••••••'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
+                value={password} onChange={e => setPassword(e.target.value)}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required
               />
             </div>
 
@@ -458,13 +474,9 @@ function AuthForm() {
               <div className="field-group">
                 <label className="field-label">Confirm password</label>
                 <input
-                  className="field-input"
-                  type="password"
-                  placeholder="••••••••"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  autoComplete="new-password"
-                  required
+                  className="field-input" type="password" placeholder="••••••••"
+                  value={confirm} onChange={e => setConfirm(e.target.value)}
+                  autoComplete="new-password" required
                 />
               </div>
             )}

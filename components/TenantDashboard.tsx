@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+const MortgageTracker = dynamic(() => import('./MortgageTracker'), { ssr: false })
 
 const StripePaymentModal = dynamic(() => import('./StripePaymentModal'), { ssr: false })
 
@@ -39,7 +40,7 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
   const [showPayModal, setShowPayModal] = useState(false)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [payLoading, setPayLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'rent' | 'history'>('rent')
+  const [activeTab, setActiveTab] = useState<'rent' | 'payments' | 'mortgage'>('rent')
 
   const fetchAll = async () => {
     const [rentRes, inviteRes] = await Promise.all([
@@ -171,8 +172,15 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
         <button className={`dash-tab ${activeTab === 'rent' ? 'active' : ''}`} onClick={() => setActiveTab('rent')}>
           Rent
         </button>
-        <button className={`dash-tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
+        <button className={`dash-tab ${activeTab === 'payments' ? 'active' : ''}`} onClick={() => setActiveTab('payments')}>
           Payment History{payments.length > 0 && <span className="dash-tab-badge">{payments.length}</span>}
+        </button>
+        <button className={`dash-tab ${activeTab === 'mortgage' ? 'active' : ''}`} onClick={() => setActiveTab('mortgage')}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          Mortgage Tracker
         </button>
       </div>
 
@@ -277,6 +285,8 @@ export default function TenantDashboard({ userId, profileStatus }: { userId: str
             </div>
           )}
         </div>
+      ) : activeTab === 'mortgage' ? (
+        <MortgageTracker />
       ) : (
         payments.length === 0 ? (
           <div className="empty-state">
