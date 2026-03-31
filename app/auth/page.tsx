@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
@@ -12,15 +12,24 @@ function AuthForm() {
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<Mode>('login')
   const [method, setMethod] = useState<SignupMethod>('email')
-  const [isPending, startTransition] = useTransition()
+  const [submitLoading, setSubmitLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Form fields
   const [name, setName] = useState('')
   const [identifier, setIdentifier] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+
+  // Email verification state
+  const [verifyState, setVerifyState] = useState<{ userId: string; email: string } | null>(null)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [verifyError, setVerifyError] = useState('')
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   useEffect(() => {
     const err = searchParams.get('error')
@@ -37,9 +46,22 @@ function AuthForm() {
     setPassword('')
     setConfirm('')
     setName('')
+    setVerifyState(null)
+    setVerifyCode('')
+    setVerifyError('')
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const startResendCooldown = () => {
+    setResendCooldown(60)
+    const interval = setInterval(() => {
+      setResendCooldown(c => {
+        if (c <= 1) { clearInterval(interval); return 0 }
+        return c - 1
+      })
+    }, 1000)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
 
@@ -48,18 +70,19 @@ function AuthForm() {
       return
     }
 
-    startTransition(async () => {
+    setSubmitLoading(true)
+
+    try {
       const url = mode === 'login' ? '/api/auth/login' : '/api/auth/signup'
-      const body =
-        mode === 'login'
-          ? { identifier, password }
-          : {
-              name,
-              email: method === 'email' ? email : undefined,
-              phone: method === 'phone' ? phone : undefined,
-              password,
-              method,
-            }
+      const body = mode === 'login'
+        ? { identifier, password }
+        : {
+            name,
+            email: method === 'email' ? email : undefined,
+            phone: method === 'phone' ? phone : undefined,
+            password,
+            method,
+          }
 
       const res = await fetch(url, {
         method: 'POST',
@@ -68,16 +91,204 @@ function AuthForm() {
       })
 
       const data = await res.json()
+
       if (!res.ok) {
         setError(data.error ?? 'Something went wrong')
         return
       }
 
-      router.push(mode === 'signup' ? '/profile/create' : '/dashboard')
+      // Email signup → show verification screen
+      if (data.requiresVerification) {
+        setVerifyState({ userId: data.userId, email: data.email })
+        startResendCooldown()
+        return
+      }
+
+      router.push('/dashboard')
       router.refresh()
-    })
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setSubmitLoading(false)
+    }
   }
 
+  const handleVerify = async () => {
+    setVerifyError('')
+    if (!verifyCode || verifyCode.length !== 6) {
+      setVerifyError('Enter the 6-digit code')
+      return
+    }
+    setVerifyLoading(true)
+
+    try {
+      const verRes = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: verifyState?.userId, code: verifyCode }),
+      })
+      const verData = await verRes.json()
+      if (!verRes.ok) {
+        setVerifyError(verData.error || 'Invalid code')
+        return
+      }
+
+      // Set session cookie now that email is verified
+      await fetch('/api/auth/complete-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: verifyState?.userId }),
+      })
+
+      router.push('/dashboard')
+      router.refresh()
+    } catch {
+      setVerifyError('Something went wrong. Please try again.')
+    } finally {
+      setVerifyLoading(false)
+    }
+  }
+
+  const handleResend = async () => {
+    setResendLoading(true)
+    setVerifyError('')
+    try {
+      const res = await fetch('/api/auth/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: verifyState?.userId }),
+      })
+      if (res.ok) {
+        startResendCooldown()
+      } else {
+        const d = await res.json()
+        setVerifyError(d.error || 'Failed to resend')
+      }
+    } catch {
+      setVerifyError('Failed to resend. Try again.')
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  // ── EMAIL VERIFICATION SCREEN ──
+  if (verifyState) {
+    return (
+      <main style={{
+        minHeight: '100vh', background: 'var(--bg)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          {/* Logo */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 9, marginBottom: 36, fontSize: 17, fontWeight: 700,
+            color: 'var(--text)', letterSpacing: '-0.02em',
+          }}>
+            <span className="brand-dot" />
+            Darli
+          </div>
+
+          {/* Icon + heading */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 32 }}>
+            <div style={{
+              width: 56, height: 56, background: 'var(--accent-dim)',
+              border: '1px solid rgba(124,111,250,0.2)', borderRadius: 14,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--accent)', marginBottom: 20,
+            }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+              </svg>
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.025em', margin: '0 0 8px' }}>
+              Check your email
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, lineHeight: 1.65 }}>
+              We sent a 6-digit code to<br />
+              <strong style={{ color: 'var(--text)' }}>{verifyState.email}</strong>
+            </p>
+          </div>
+
+          {/* Code input + actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="field-group">
+              <label className="field-label">Verification code</label>
+              <input
+                className="field-input"
+                type="text"
+                inputMode="numeric"
+                placeholder="000000"
+                maxLength={6}
+                value={verifyCode}
+                onChange={e => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={e => e.key === 'Enter' && handleVerify()}
+                style={{
+                  textAlign: 'center', fontSize: 28, fontWeight: 700,
+                  letterSpacing: '0.25em', fontFamily: 'monospace', padding: '14px',
+                }}
+                autoFocus
+              />
+            </div>
+
+            {verifyError && (
+              <div className="error-msg">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {verifyError}
+              </div>
+            )}
+
+            <button
+              className="btn-primary"
+              onClick={handleVerify}
+              disabled={verifyLoading || verifyCode.length !== 6}
+            >
+              {verifyLoading ? <span className="spinner" /> : 'Verify Email'}
+            </button>
+
+            {/* Resend */}
+            <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+              Didn&apos;t receive it?{' '}
+              <button
+                type="button"
+                style={{
+                  background: 'none', border: 'none', padding: 0,
+                  color: resendCooldown > 0 || resendLoading ? 'var(--text-muted)' : 'var(--accent)',
+                  fontFamily: 'var(--font)', fontSize: 13, fontWeight: 600,
+                  cursor: resendCooldown > 0 || resendLoading ? 'default' : 'pointer',
+                }}
+                onClick={resendCooldown > 0 || resendLoading ? undefined : handleResend}
+                disabled={resendLoading || resendCooldown > 0}
+              >
+                {resendLoading ? 'Sending…' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend'}
+              </button>
+            </div>
+
+            {/* Back */}
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ alignSelf: 'center' }}
+              onClick={() => {
+                setVerifyState(null)
+                setVerifyCode('')
+                setVerifyError('')
+              }}
+            >
+              ← Back to sign up
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  // ── MAIN AUTH SCREEN ──
   return (
     <main className="auth-wrapper">
       {/* ── LEFT PANEL ── */}
@@ -86,33 +297,23 @@ function AuthForm() {
           <span className="brand-dot" />
           Darli
         </div>
-
         <div className="brand-content">
           <div className="orb" />
           <div className="orb orb-2" />
-
-          <h1 className="brand-headline">
-            DARLI
-          </h1>
-          <p className="brand-sub">
-            The Housing Financial Platform
-          </p>
-          <p className="brand-sub">
-            Free for Renters. Free for Landlords. Built on Trust.
-          </p>
+          <h1 className="brand-headline">DARLI</h1>
+          <p className="brand-sub">The Housing Financial Platform</p>
+          <p className="brand-sub">Free for Renters. Free for Landlords. Built on Trust.</p>
         </div>
       </div>
 
       {/* ── RIGHT PANEL ── */}
       <div className="auth-right">
         <div className="form-container">
-          {/* Mobile-only logo */}
           <div className="mobile-logo">
             <span className="brand-dot" />
             Darli
           </div>
 
-          {/* Tab switcher */}
           <div className="tab-switcher">
             <button
               type="button"
@@ -130,19 +331,15 @@ function AuthForm() {
             </button>
           </div>
 
-          {/* Heading */}
           <div className="form-header">
             <h2 className="form-title">
               {mode === 'login' ? 'Welcome back' : 'Create account'}
             </h2>
             <p className="form-sub">
-              {mode === 'login'
-                ? 'Sign in to your Darli account'
-                : 'Get started — it only takes a minute'}
+              {mode === 'login' ? 'Sign in to your Darli account' : 'Get started — it only takes a minute'}
             </p>
           </div>
 
-          {/* Google button */}
           <a href="/api/auth/google" className="btn-google">
             <svg width="18" height="18" viewBox="0 0 48 48" fill="none">
               <path d="M47.532 24.552c0-1.636-.132-3.196-.388-4.692H24v9.27h13.204c-.584 3.028-2.28 5.596-4.792 7.292v5.996h7.696c4.524-4.172 7.424-10.324 7.424-17.866z" fill="#4285F4"/>
@@ -153,12 +350,8 @@ function AuthForm() {
             Continue with Google
           </a>
 
-          {/* Divider */}
-          <div className="divider">
-            <span>or</span>
-          </div>
+          <div className="divider"><span>or</span></div>
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="auth-form">
             {mode === 'signup' && (
               <div className="field-group">
@@ -168,7 +361,7 @@ function AuthForm() {
                   type="text"
                   placeholder="Jane Smith"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={e => setName(e.target.value)}
                   autoComplete="name"
                 />
               </div>
@@ -208,7 +401,7 @@ function AuthForm() {
                   type="text"
                   placeholder="you@example.com or +1 555 0100"
                   value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  onChange={e => setIdentifier(e.target.value)}
                   autoComplete="username"
                   required
                 />
@@ -223,7 +416,7 @@ function AuthForm() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={e => setEmail(e.target.value)}
                   autoComplete="email"
                   required
                 />
@@ -238,7 +431,7 @@ function AuthForm() {
                   type="tel"
                   placeholder="+1 555 000 0000"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={e => setPhone(e.target.value)}
                   autoComplete="tel"
                   required
                 />
@@ -248,16 +441,14 @@ function AuthForm() {
             <div className="field-group">
               <div className="field-label-row">
                 <label className="field-label">Password</label>
-                {mode === 'login' && (
-                  <a href="#" className="forgot-link">Forgot password?</a>
-                )}
+                {mode === 'login' && <a href="#" className="forgot-link">Forgot password?</a>}
               </div>
               <input
                 className="field-input"
                 type="password"
                 placeholder={mode === 'signup' ? 'Minimum 8 characters' : '••••••••'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={e => setPassword(e.target.value)}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
               />
@@ -271,7 +462,7 @@ function AuthForm() {
                   type="password"
                   placeholder="••••••••"
                   value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
+                  onChange={e => setConfirm(e.target.value)}
                   autoComplete="new-password"
                   required
                 />
@@ -289,8 +480,8 @@ function AuthForm() {
               </div>
             )}
 
-            <button type="submit" className="btn-primary" disabled={isPending}>
-              {isPending ? (
+            <button type="submit" className="btn-primary" disabled={submitLoading}>
+              {submitLoading ? (
                 <span className="spinner" />
               ) : (
                 <>
